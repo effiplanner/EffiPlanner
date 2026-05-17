@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BudgetPeriod {
+  weekly
+  monthly
+}
+
+enum MealSlot {
+  breakfast
+  lunch
+  dinner
+}
+
+enum PlanStatus {
+  draft
+  final
+}
+
+enum FeedbackRating {
+  up
+  down
+}
+
+enum FeedbackReason {
+  too_hard
+  too_expensive
+  taste
+  other
+}
+
+model Profile {
+  id          String          @id @default(uuid())
+  locale      String          @default("ro")
+  createdAt   DateTime        @default(now())
+  settings    ProfileSettings?
+  plans       Plan[]
+  feedback    FeedbackEvent[]
+}
+
+model ProfileSettings {
+  profileId           String      @id
+  profile             Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  budgetAmountCents   Int         @default(0)
+  budgetCurrency      String      @default("RON")
+  budgetPeriod        BudgetPeriod @default(weekly)
+
+  householdSize       Int         @default(1)
+  daysToPlan          Int         @default(7)
+
+  locationText        String      @default("")
+  preferredStoreIds   String[]    @default([])
+
+  restrictionsJson    Json        @default("{}")
+  dislikes            String[]    @default([])
+  equipment           String[]    @default([])
+
+  cookTimeMaxMin      Int         @default(40)
+  energyLevel         String      @default("med") // low|med|high
+  goalTags            String[]    @default([])
+
+  freeformRequest     String      @default("")
+  updatedAt           DateTime    @updatedAt
+}
+
+model Store {
+  id        String   @id @default(uuid())
+  name      String
+  country   String   @default("RO")
+  city      String   @default("")
+  tags      String[] @default([])
+  prices    IngredientPrice[]
+}
+
+model Ingredient {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  category      String   @default("pantry") // meat/protein/dairy/vegetables/pantry/spices/frozen/household
+  defaultUnit   String   @default("g")      // g|ml|piece
+  typicalPack   Int?     // e.g. 500g
+  prices        IngredientPrice[]
+  mealLinks     MealIngredient[]
+  shoppingLinks ShoppingItem[]
+}
+
+model IngredientPrice {
+  id           String     @id @default(uuid())
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  storeId      String?
+  store        Store?     @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  // Price for `qty` units (e.g. 100g, 1 piece)
+  priceCents   Int
+  currency     String     @default("RON")
+  unit         String     // g|ml|piece
+  qty          Int        // e.g. 100 for g/ml, 1 for piece
+  updatedAt    DateTime   @updatedAt
+
+  @@index([ingredientId, storeId])
+}
+
+model Plan {
+  id                 String      @id @default(uuid())
+  profileId          String
+  profile            Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  status             PlanStatus  @default(draft)
+  days               Int         @default(7)
+  modeTags           String[]    @default([])
+  estimatedTotalCents Int        @default(0)
+  currency           String      @default("RON")
+  createdAt          DateTime    @default(now())
+
+  meals              PlanMeal[]
+  shoppingList       ShoppingList?
+}
+
+model PlanMeal {
+  id               String     @id @default(uuid())
+  planId           String
+  plan             Plan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  dayIndex          Int
+  slot              MealSlot
+
+  title             String
+  servings          Int        @default(2)
+  estTimeMin        Int        @default(30)
+
+  estCostTotalCents Int        @default(0)
+  estCostPerServingCents Int   @default(0)
+  tags              String[]   @default([])
+
+  stepsShort        String     @default("")
+  storageNotes      String     @default("")
+  substitutionsJson Json       @default("[]")
+  macrosJson        Json       @default("{}") // approximate
+
+  ingredients       MealIngredient[]
+  feedback          FeedbackEvent[]
+}
+
+model MealIngredient {
+  id            String     @id @default(uuid())
+  planMealId    String
+  planMeal      PlanMeal   @relation(fields: [planMealId], references: [id], onDelete: Cascade)
+
+  ingredientId  String
+  ingredient    Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  qty           Int
+  unit          String     // g|ml|piece
+  isStapleAssumed Boolean  @default(false)
+
+  @@index([planMealId])
+}
+
+model ShoppingList {
+  id        String   @id @default(uuid())
+  planId    String   @unique
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  items     ShoppingItem[]
+}
+
+model ShoppingItem {
+  id            String     @id @default(uuid())
+  shoppingListId String
+  shoppingList  ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+
+  ingredientId  String?
+  ingredient    Ingredient? @relation(fields: [ingredientId], references: [id], onDelete: SetNull)
+
+  label         String
+  category      String     @default("pantry")
+  qty           Int
+  unit          String     // g|ml|piece
+
+  checked       Boolean    @default(false)
+  alreadyHave   Boolean    @default(false)
+  sortKey       Int        @default(0)
+}
+
+model FeedbackEvent {
+  id         String         @id @default(uuid())
+  profileId  String
+  profile    Profile        @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  planMealId String
+  planMeal   PlanMeal       @relation(fields: [planMealId], references: [id], onDelete: Cascade)
+
+  rating     FeedbackRating
+  reason     FeedbackReason @default(other)
+  note       String         @default("")
+  createdAt  DateTime       @default(now())
+}
