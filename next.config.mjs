@@ -1,9 +1,13 @@
+import path from "node:path";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverActions: {
-      allowedOrigins: ["localhost:3000"],
-    },
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "@": path.resolve(process.cwd()),
+    };
+    return config;
   },
 };
 
